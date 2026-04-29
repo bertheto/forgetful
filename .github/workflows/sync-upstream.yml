@@ -1,0 +1,70 @@
+name: Sync upstream
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'   # Monday 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  sync:
+    # Guard: only run on the private fork, never on upstream or unrelated forks.
+    if: github.repository == 'bertheto/forgetful-hulkito'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git + upstream remote
+        run: |
+          git config user.name "sync-upstream-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git remote add upstream https://github.com/ScottRBK/forgetful.git
+          git fetch upstream --tags
+
+      - name: Merge upstream/main WITHOUT commit (honoring .gitattributes merge=ours)
+        id: merge
+        run: |
+          set -e
+          # --no-commit: leave merge staged in working tree so peter-evans/create-pull-request
+          # can handle branch/commit/push/PR. Using --no-edit would commit on main directly and
+          # peter-evans would no-op with nothing to PR.
+          # merge=ours in .gitattributes auto-resolves fork-governance files.
+          # Any REAL conflict on non-protected file fails the step and the PR is not opened.
+          if ! git merge --no-ff --no-commit upstream/main; then
+            echo "::error::Real merge conflict on non-protected file. Aborting."
+            git merge --abort
+            exit 1
+          fi
+          # Detect whether the merge introduced any staged changes.
+          if git diff --cached --quiet; then
+            echo "no_changes=true" >> "$GITHUB_OUTPUT"
+            echo "Upstream already merged; nothing to PR."
+          else
+            echo "no_changes=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open PR via peter-evans
+        if: steps.merge.outputs.no_changes == 'false'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          # Prefer a fine-grained PAT (SYNC_UPSTREAM_PAT) so the PR triggers CI.
+          # Fallback: GITHUB_TOKEN (PR opened but dependent workflows do NOT trigger — GitHub anti-loop policy).
+          token: ${{ secrets.SYNC_UPSTREAM_PAT || secrets.GITHUB_TOKEN }}
+          branch: sync/upstream-${{ github.run_id }}
+          base: main
+          title: "chore(sync): upstream -> main"
+          body: |
+            Automated weekly sync from `upstream/main` (ScottRBK/forgetful).
+
+            - Fork-governance files (FORK.md, dashboard/**, workflows under merge=ours) kept as-is.
+            - Real conflicts on non-protected files are NOT silenced — if the merge step fails, this PR is not opened.
+            - Review non-protected diffs before merging.
+
+            If CI did not run automatically, the workflow is using `GITHUB_TOKEN` (anti-loop). Add a `SYNC_UPSTREAM_PAT` secret or dispatch `ci.yml` manually on this branch.
+          commit-message: "chore(sync): merge upstream/main"
+          delete-branch: true

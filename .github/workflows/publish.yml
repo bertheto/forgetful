@@ -6,6 +6,8 @@ on:
 
 jobs:
   publish:
+    # Fork guard: PyPI publish only on upstream (soft-fork non-competing policy).
+    if: github.repository == 'ScottRBK/forgetful'
     runs-on: ubuntu-latest
     environment: pypi
     permissions:

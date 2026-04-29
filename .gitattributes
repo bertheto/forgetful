@@ -1,0 +1,11 @@
+# Soft-fork merge strategy:
+# 'merge=ours' keeps our version on conflict when merging FROM upstream.
+# Scoped deliberately to fork-only files to avoid blocking legitimate upstream updates.
+# NB: 'merge=ours' only works during `git merge`, not `git rebase`. This fork uses a
+# merge-only workflow (see FORK.md).
+
+FORK.md         merge=ours
+.gitattributes  merge=ours
+dashboard/**    merge=ours
+.github/workflows/sync-upstream.yml merge=ours
+.github/workflows/ci.yml            merge=ours

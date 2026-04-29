@@ -7,6 +7,8 @@ on:
 
 jobs:
   build:
+    # Fork guard: Docker image publish only on upstream (avoid ghcr.io/bertheto/forgetful if a v* tag ever leaks).
+    if: github.repository == 'ScottRBK/forgetful'
     runs-on: ubuntu-latest
     permissions:
       contents: read

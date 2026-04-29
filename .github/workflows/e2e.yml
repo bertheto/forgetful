@@ -7,6 +7,8 @@ on:
 
 jobs:
   e2e:
+    # Fork guard: Postgres e2e tests only run on upstream (expensive + redundant on private fork).
+    if: github.repository == 'ScottRBK/forgetful'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code

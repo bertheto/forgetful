@@ -421,6 +421,11 @@ def register(mcp: FastMCP):
             List of target memory IDs that were successfully linked
         """
         try:
+            if isinstance(related_ids, (int, str)):
+                related_ids = [int(related_ids)]
+            elif isinstance(related_ids, (list, tuple, set)):
+                related_ids = [int(x) for x in related_ids]
+
             logger.info("MCP Tool -> link_memories", extra={
                 "memory_id": memory_id,
                 "related_ids": related_ids,
@@ -431,7 +436,7 @@ def register(mcp: FastMCP):
             if not related_ids:
                 raise ToolError("related_ids cannot be empty")
 
-            related_ids = [rid for rid in related_ids if rid !=memory_id]
+            related_ids = [rid for rid in dict.fromkeys(related_ids) if rid != memory_id]
 
             if not related_ids:
                 raise ToolError("Cannot link memory to itself")

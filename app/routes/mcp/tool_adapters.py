@@ -284,8 +284,9 @@ class MemoryToolAdapters:
 
     async def update_memory(
         self,
-        memory_id: int,
         ctx: Context,
+        memory_id: int | None = None,
+        id: int | None = None,
         title: str | None = None,
         content: str | None = None,
         context: str | None = None,
@@ -305,9 +306,14 @@ class MemoryToolAdapters:
         agent_id: str | None = None,
         agent_version: str | None = None,
         agent_model: str | None = None,
+        **kwargs,
     ) -> Memory:
         """Adapter for update_memory tool"""
-        logger.info("MCP Tool -> update_memory", extra={"memory_id": memory_id})
+        mid = memory_id if memory_id is not None else id
+        if mid is None:
+            raise ValueError("update_memory requires memory_id (or id)")
+        mid = int(mid)
+        logger.info("MCP Tool -> update_memory", extra={"memory_id": mid})
 
         user = await get_user_from_auth(ctx)
 
@@ -339,7 +345,7 @@ class MemoryToolAdapters:
 
         refreshed_memory = await self.memory_service.update_memory(
             user_id=user.id,
-            memory_id=memory_id,
+            memory_id=mid,
             updated_memory=updated_memory,
         )
 
@@ -347,78 +353,223 @@ class MemoryToolAdapters:
 
     async def link_memories(
         self,
-        memory_id: int,
-        related_ids: list[int],
         ctx: Context,
+        memory_id: int | None = None,
+        related_ids: list[int] | int | None = None,
+        source_id: int | None = None,
+        target_id: int | None = None,
+        target_ids: list[int] | int | None = None,
+        related_id: int | None = None,
+        memory_id_1: int | None = None,
+        memory_id_2: int | None = None,
+        from_id: int | None = None,
+        to_id: int | None = None,
+        from_memory_id: int | None = None,
+        to_memory_id: int | None = None,
+        memory_ids: list[int] | None = None,
+        ids: list[int] | None = None,
+        id: int | None = None,
+        linked_ids: list[int] | int | None = None,
+        related_memory_ids: list[int] | int | None = None,
+        **kwargs,
     ) -> dict:
-        """Adapter for link_memories tool"""
+        """Adapter for link_memories tool with alias resilience"""
+        src: int | None = None
+        targets: list[int] = []
+
+        if memory_ids and len(memory_ids) >= 2:
+            src = int(memory_ids[0])
+            targets = [int(x) for x in memory_ids[1:]]
+        elif ids and len(ids) >= 2:
+            src = int(ids[0])
+            targets = [int(x) for x in ids[1:]]
+        else:
+            raw_src = memory_id if memory_id is not None else (
+                source_id if source_id is not None else (
+                    from_id if from_id is not None else (
+                        from_memory_id if from_memory_id is not None else (
+                            memory_id_1 if memory_id_1 is not None else id
+                        )
+                    )
+                )
+            )
+            if raw_src is not None:
+                src = int(raw_src)
+
+            raw_targets = (
+                related_ids
+                if related_ids is not None
+                else (
+                    target_ids
+                    if target_ids is not None
+                    else (
+                        target_id
+                        if target_id is not None
+                        else (
+                            related_id
+                            if related_id is not None
+                            else (
+                                to_id
+                                if to_id is not None
+                                else (
+                                    to_memory_id
+                                    if to_memory_id is not None
+                                    else (
+                                        memory_id_2
+                                        if memory_id_2 is not None
+                                        else (
+                                            linked_ids
+                                            if linked_ids is not None
+                                            else related_memory_ids
+                                        )
+                                    )
+                                )
+                            )
+                        )
+                    )
+                )
+            )
+
+            if raw_targets is not None:
+                if isinstance(raw_targets, (list, tuple, set)):
+                    targets = [int(x) for x in raw_targets]
+                else:
+                    targets = [int(raw_targets)]
+
+        if src is None:
+            raise ValueError("link_memories requires memory_id (or source_id)")
+        if not targets:
+            raise ValueError("related_ids cannot be empty")
+
+        cleaned_related_ids = [rid for rid in dict.fromkeys(targets) if rid != src]
+
+        if not cleaned_related_ids:
+            raise ValueError("Cannot link memory to itself")
+
         logger.info(
             "MCP Tool -> link_memories",
-            extra={"memory_id": memory_id, "related_ids": related_ids},
+            extra={"memory_id": src, "related_ids": cleaned_related_ids},
         )
 
         user = await get_user_from_auth(ctx)
 
-        if not related_ids:
-            raise ValueError("related_ids cannot be empty")
-
-        related_ids = [rid for rid in related_ids if rid != memory_id]
-
-        if not related_ids:
-            raise ValueError("Cannot link memory to itself")
-
         links_created = await self.memory_service.link_memories(
             user_id=user.id,
-            memory_id=memory_id,
-            related_ids=related_ids,
+            memory_id=src,
+            related_ids=cleaned_related_ids,
         )
 
         logger.info(
             "MCP Tool - memories linked",
-            extra={"memory_id": memory_id, "memories_linked": links_created},
+            extra={"memory_id": src, "memories_linked": links_created},
         )
 
         return {"linked_memory_ids": links_created}
 
     async def unlink_memories(
         self,
-        source_id: int,
-        target_id: int,
         ctx: Context,
+        source_id: int | None = None,
+        target_id: int | None = None,
+        memory_id: int | None = None,
+        related_id: int | None = None,
+        related_ids: list[int] | int | None = None,
+        target_ids: list[int] | int | None = None,
+        memory_ids: list[int] | None = None,
+        ids: list[int] | None = None,
+        memory_id_1: int | None = None,
+        memory_id_2: int | None = None,
+        from_id: int | None = None,
+        to_id: int | None = None,
+        from_memory_id: int | None = None,
+        to_memory_id: int | None = None,
+        id: int | None = None,
+        **kwargs,
     ) -> dict:
-        """Adapter for unlink_memories tool"""
+        """Adapter for unlink_memories tool with alias resilience"""
+        src: int | None = None
+        tgt: int | None = None
+
+        if memory_ids and len(memory_ids) >= 2:
+            src = int(memory_ids[0])
+            tgt = int(memory_ids[1])
+        elif ids and len(ids) >= 2:
+            src = int(ids[0])
+            tgt = int(ids[1])
+        else:
+            raw_src = source_id if source_id is not None else (
+                memory_id if memory_id is not None else (
+                    from_id if from_id is not None else (
+                        from_memory_id if from_memory_id is not None else (
+                            memory_id_1 if memory_id_1 is not None else id
+                        )
+                    )
+                )
+            )
+            if raw_src is not None:
+                src = int(raw_src)
+
+            raw_tgt = target_id if target_id is not None else (
+                related_id if related_id is not None else (
+                    to_id if to_id is not None else (
+                        to_memory_id if to_memory_id is not None else (
+                            memory_id_2 if memory_id_2 is not None else (
+                                (related_ids[0] if isinstance(related_ids, (list, tuple, set)) and related_ids else (related_ids if isinstance(related_ids, int) else None))
+                                if related_ids is not None
+                                else (
+                                    (target_ids[0] if isinstance(target_ids, (list, tuple, set)) and target_ids else (target_ids if isinstance(target_ids, int) else None))
+                                    if target_ids is not None
+                                    else None
+                                )
+                            )
+                        )
+                    )
+                )
+            )
+            if raw_tgt is not None:
+                tgt = int(raw_tgt)
+
+        if src is None or tgt is None:
+            raise ValueError("unlink_memories requires source_id (or memory_id) and target_id (or related_id)")
+
         logger.info(
             "MCP Tool -> unlink_memories",
-            extra={"source_id": source_id, "target_id": target_id},
+            extra={"source_id": src, "target_id": tgt},
         )
 
         user = await get_user_from_auth(ctx)
 
         success = await self.memory_service.unlink_memories(
             user_id=user.id,
-            memory_id=source_id,
-            target_id=target_id,
+            memory_id=src,
+            target_id=tgt,
         )
 
         logger.info(
             "MCP Tool - memories unlinked",
-            extra={"source_id": source_id, "target_id": target_id, "success": success},
+            extra={"source_id": src, "target_id": tgt, "success": success},
         )
 
         return {"success": success}
 
     async def get_memory(
         self,
-        memory_id: int,
         ctx: Context,
+        memory_id: int | None = None,
+        id: int | None = None,
+        **kwargs,
     ) -> Memory:
         """Adapter for get_memory tool"""
-        logger.info("MCP Tool -> get_memory", extra={"memory_id": memory_id})
+        mid = memory_id if memory_id is not None else id
+        if mid is None:
+            raise ValueError("get_memory requires memory_id (or id)")
+        mid = int(mid)
+        logger.info("MCP Tool -> get_memory", extra={"memory_id": mid})
 
         user = await get_user_from_auth(ctx)
 
         memory = await self.memory_service.get_memory(
-            user_id=user.id, memory_id=memory_id,
+            user_id=user.id, memory_id=mid,
         )
 
         logger.info(
@@ -430,19 +581,26 @@ class MemoryToolAdapters:
 
     async def mark_memory_obsolete(
         self,
-        memory_id: int,
-        reason: str,
         ctx: Context,
+        memory_id: int | None = None,
+        id: int | None = None,
+        *,
+        reason: str,
         superseded_by: int | None = None,
+        **kwargs,
     ) -> dict:
         """Adapter for mark_memory_obsolete tool"""
-        logger.info("MCP Tool -> mark_memory_obsolete", extra={"memory_id": memory_id})
+        mid = memory_id if memory_id is not None else id
+        if mid is None:
+            raise ValueError("mark_memory_obsolete requires memory_id (or id)")
+        mid = int(mid)
+        logger.info("MCP Tool -> mark_memory_obsolete", extra={"memory_id": mid})
 
         user = await get_user_from_auth(ctx)
 
         success = await self.memory_service.mark_memory_obsolete(
             user_id=user.id,
-            memory_id=memory_id,
+            memory_id=mid,
             reason=reason,
             superseded_by=superseded_by,
         )
